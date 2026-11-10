@@ -1,6 +1,11 @@
 # op-agent
 
 <p align="center"><img src="assets/logo.svg" width="96" alt="op-agent logo"></p>
+<p align="center">
+  <a href="https://github.com/efrageek/op-agent/actions/workflows/ci.yml"><img src="https://github.com/efrageek/op-agent/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/efrageek/op-agent" alt="License: MIT"></a>
+  <a href="https://github.com/efrageek/op-agent/releases"><img src="https://img.shields.io/github/v/release/efrageek/op-agent" alt="Release"></a>
+</p>
 
 [Español](README.es.md)
 
