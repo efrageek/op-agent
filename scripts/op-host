@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Runs `op` outside Claude Desktop's NoNewPrivs=1, which drops the setgid bit /usr/bin/op needs
+# to talk to the 1Password desktop app. systemd-run --user starts it outside that flag.
+# Usage: op-host <op args>. For admin tasks (creating vaults and service accounts); op-agent does not need it.
+env_args=()
+[[ -n ${OP_ACCOUNT:-} ]] && env_args+=(--setenv="OP_ACCOUNT=$OP_ACCOUNT")
+exec systemd-run --user --pipe --wait --collect -q \
+  --working-directory="$PWD" \
+  "${env_args[@]}" \
+  -- /usr/bin/op "$@"

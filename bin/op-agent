@@ -1,0 +1,126 @@
+#!/bin/bash -p
+# op-agent: `op run` with a 1Password Service Account token, for Claude sessions.
+# Usage: op-agent [--prod] run [op run flags] -- <command>
+#        op-agent [--prod] ssh [--key <item>] <host> [command]   ssh with the "private key" of the item named like <host>, or <item>
+#        op-agent --prod ssh-window [--key <item>] <host> [minutes]   plain `ssh <host>` works for up to 120 min
+#        op-agent ssh-window --close    end every window now
+#        op-agent ls    what Claude can use, as ready op:// references (names only)
+# -p ignores BASH_ENV/ENV and inherited functions; PATH is pinned and every tool is called by absolute path.
+set +x
+orig_path=$PATH   # only handed back to the command `run` executes, never used by the wrapper itself
+export PATH=/usr/bin:/bin
+[[ $(/usr/bin/uname -s) == Linux ]] || { echo "op-agent: Linux only" >&2; exit 2; }
+unset ENV BASH_ENV SHELLOPTS BASH_XTRACEFD CDPATH 2>/dev/null || :   # SHELLOPTS is readonly in bash: -p already ignores it
+set -euo pipefail
+
+# From passwd only: the command line can set HOME and other environment variables.
+home=$(/usr/bin/getent passwd "$(/usr/bin/id -u)" | /usr/bin/cut -d: -f6) || home=
+[[ -n $home ]] || { echo "op-agent: cannot look up the home directory" >&2; exit 2; }
+# A Service Account token skips the desktop app, so plain op works under NoNewPrivs (no op-host).
+unset "${!OP_@}"
+window='' item='' host='' minutes='' args=() sep=0
+
+if [[ ${1:-} == ls ]]; then
+  # Names and labels only: values stay inside jq, so listing prod needs no approval.
+  ok=0 bad=0
+  for p in dev prod; do
+    tf="$home/.config/op-agent/$p.token"
+    [[ -r $tf ]] || continue
+    tok="$(<"$tf")"   # not exported: each op call gets it as a prefix, so jq never sees it
+    # jq loads $HOME/.jq on start; a caller's HOME could redefine select and print the values.
+    if OP_SERVICE_ACCOUNT_TOKEN=$tok /usr/bin/op item list --vault "claude-$p" --format json |
+       OP_SERVICE_ACCOUNT_TOKEN=$tok /usr/bin/op item get - --format json |
+       HOME=/nonexistent /usr/bin/jq -r --arg v "claude-$p" --arg use "$([[ $p == prod ]] && echo 'op-agent --prod run' || echo 'op-agent run')" '
+        .title as $t | (if ($t | test("^[A-Za-z0-9_.()-]([A-Za-z0-9 _.()-]*[A-Za-z0-9_.()-])?$")) then $t else .id end) as $item
+        | .fields[]? | select((.value // "") != "" and ((.label == "valid from" or .label == "expires") | not))
+        | "op://\($v)/\($item)/\(.label)\t\($use)\t\($t)"'; then
+      ok=1
+    else
+      bad=1; echo "op-agent: $p listing failed (token expired?)" >&2
+    fi
+  done
+  (( ok || bad )) || { echo "op-agent: no token files in ~/.config/op-agent (see README)" >&2; exit 2; }
+  (( ok || !bad )) || exit 1
+  exit 0
+fi
+
+profile=dev
+[[ ${1:-} == --prod ]] && { profile=prod; shift; }
+if [[ ${1:-} == ssh-window && ${2:-} == --close ]]; then
+  for s in "$home"/.ssh/op-agent-*.sock; do
+    [[ -S $s ]] && SSH_AUTH_SOCK=$s /usr/bin/ssh-add -D >/dev/null 2>&1 || :
+  done
+  echo "op-agent: ssh windows closed"
+  exit 0
+fi
+
+if [[ ${1:-} == ssh-window ]]; then
+  shift
+  if [[ ${1:-} == --key ]]; then item=${2:-}; shift 2 || :; else item=${1:-}; fi
+  host=${1:-} minutes=${2:-120}
+  [[ $host =~ ^[A-Za-z0-9._][A-Za-z0-9._-]*$ && $item =~ ^[A-Za-z0-9._()][A-Za-z0-9\ ._()-]*$ && $minutes =~ ^[0-9]{1,3}$ ]] && (( 10#$minutes >= 1 && 10#$minutes <= 120 )) ||
+    { echo "op-agent: usage: op-agent --prod ssh-window [--key <item>] <host> [minutes, 1-120]" >&2; exit 2; }
+  window=1
+elif [[ ${1:-} == ssh ]]; then
+  shift
+  # The key defaults to the item named like the host alias; --key picks another.
+  if [[ ${1:-} == --key ]]; then item=${2:-}; shift 2 || :; else item=${1:-}; fi
+  [[ ${1:-} =~ ^[A-Za-z0-9._][A-Za-z0-9._-]*$ && $item =~ ^[A-Za-z0-9._()][A-Za-z0-9\ ._()-]*$ ]] ||
+    { echo "op-agent: usage: op-agent [--prod] ssh [--key <item>] <host> [command]" >&2; exit 2; }
+else
+  [[ ${1:-} == run ]] || { echo "op-agent: only 'run', 'ssh', 'ssh-window' and 'ls' are allowed (secrets go into the process, never to stdout)" >&2; exit 2; }
+  for a in "$@"; do
+    if (( !sep )); then
+      [[ $a == --no-masking* ]] && { echo "op-agent: --no-masking is not allowed" >&2; exit 2; }
+      # The child must not inherit the token itself: op run masks only the secrets it resolves.
+      [[ $a == -- ]] && { sep=1; args+=(-- /usr/bin/env -uOP_SERVICE_ACCOUNT_TOKEN); continue; }
+    fi
+    args+=("$a")
+  done
+  (( sep )) || { echo "op-agent: put the command after --" >&2; exit 2; }
+fi
+
+if [[ $profile == prod ]]; then
+  # One approval from the Claude mod = one prod run; scripts calling op-agent --prod themselves get none.
+  ticket="$home/.cache/op-agent/prod.ticket" claimed="$home/.cache/op-agent/prod.ticket.$$"
+  # mv claims it atomically, so two runs cannot share one ticket; the hook voids it once its command ends.
+  if /usr/bin/mv "$ticket" "$claimed" 2>/dev/null && [[ $(<"$claimed") =~ ^[0-9]+$ ]] \
+     && (( $(/usr/bin/date +%s) - $(/usr/bin/stat -c %Y "$claimed") <= 120 )); then
+    /usr/bin/rm -f "$claimed"
+  else
+    /usr/bin/rm -f "$claimed"
+    echo "op-agent: --prod needs an approval. Run it directly from Claude as: op-agent --prod run --env-file <file> -- <command>" >&2
+    exit 3
+  fi
+fi
+
+token_file="$home/.config/op-agent/$profile.token"
+[[ -r $token_file ]] || { echo "op-agent: missing $token_file (see README)" >&2; exit 2; }
+
+if [[ -n ${window:-} ]]; then
+  # One agent per host at a fixed socket; ~/.ssh/config routes `ssh <host>` there while it holds a key.
+  # ssh-add -t drops the key when the window ends, and ssh falls back to the 1Password agent by itself.
+  sock="$home/.ssh/op-agent-$host.sock" rc=0
+  SSH_AUTH_SOCK=$sock /usr/bin/ssh-add -l >/dev/null 2>&1 || rc=$?
+  # -t is only the default for keys added without -t (ours always pass one); it does not stop the agent.
+  if (( rc == 2 )); then /usr/bin/rm -f "$sock"; /usr/bin/ssh-agent -a "$sock" -t 7200 >/dev/null; fi
+  OP_SERVICE_ACCOUNT_TOKEN="$(<"$token_file")" /usr/bin/op read "op://claude-$profile/$item/private key" |
+    SSH_AUTH_SOCK=$sock /usr/bin/ssh-add -q -t "$((10#$minutes * 60))" - || exit 4
+  echo "op-agent: ssh $host works for $minutes min (close early: op-agent ssh-window --close)"
+  exit 0
+fi
+
+if [[ -n ${item:-} ]]; then
+  # No `op run`: the key travels op -> pipe -> ssh-add and never sits in any process environment.
+  agent_env=$(/usr/bin/ssh-agent -s) || exit 4
+  eval "$agent_env" >/dev/null
+  trap '/usr/bin/ssh-agent -k >/dev/null' EXIT
+  OP_SERVICE_ACCOUNT_TOKEN="$(<"$token_file")" /usr/bin/op read "op://claude-$profile/$item/private key" |
+    /usr/bin/ssh-add -q -t 3600 - || exit 4
+  # -o on the command line beats ~/.ssh/config, so a host alias pointing at the 1Password agent
+  # (which prompts on the desktop) uses the throwaway agent instead.
+  /usr/bin/ssh -o IdentityAgent="$SSH_AUTH_SOCK" -o IdentitiesOnly=no -o ForwardAgent=no -- "$@" || exit $?
+  exit 0
+fi
+
+PATH=$orig_path OP_SERVICE_ACCOUNT_TOKEN="$(<"$token_file")" exec /usr/bin/op "${args[@]}"

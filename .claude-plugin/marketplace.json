@@ -1,0 +1,6 @@
+{
+  "name": "op-agent",
+  "owner": { "name": "efrageek" },
+  "description": "op-agent: 1Password Service Account secrets for Claude Code, with a prod approval step.",
+  "plugins": [{ "name": "op-agent", "source": "./" }]
+}

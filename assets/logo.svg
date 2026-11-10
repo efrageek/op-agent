@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="128" height="128" shape-rendering="crispEdges" role="img" aria-label="Agent holding a padlock">
+<title>Agent holding a padlock</title>
+<style>.A{fill:#2F9E77}.K{fill:#3B4A6B}.E{fill:#8CF5D2}.M{fill:#8CF5D2}.S{fill:#8A6A00}.L{fill:#F2C94C}.H{fill:#FFF1B8}@media (prefers-color-scheme: dark){.A{fill:#4FD1A0}.K{fill:#A9B8D8}.E{fill:#12263A}.M{fill:#12263A}.S{fill:#F2C94C}.L{fill:#F2C94C}.H{fill:#FFF1B8}}</style>
+<path class="A" d="M7 1h2v1h-2zM7 2h2v1h-2z"/>
+<path class="K" d="M2 3h12v1h-12zM2 4h2v1h-2zM6 4h4v1h-4zM12 4h2v1h-2zM2 5h2v1h-2zM6 5h4v1h-4zM12 5h2v1h-2zM2 6h12v1h-12zM2 7h3v1h-3zM11 7h3v1h-3zM2 8h12v1h-12z"/>
+<path class="E" d="M4 4h2v1h-2zM10 4h2v1h-2zM4 5h2v1h-2zM10 5h2v1h-2z"/>
+<path class="M" d="M5 7h6v1h-6z"/>
+<path class="S" d="M6 9h4v1h-4zM5 10h1v1h-1zM10 10h1v1h-1zM5 11h1v1h-1zM10 11h1v1h-1z"/>
+<path class="L" d="M4 12h8v1h-8zM4 13h1v1h-1zM6 13h6v1h-6zM4 14h8v1h-8zM4 15h8v1h-8z"/>
+<path class="H" d="M5 13h1v1h-1z"/>
+</svg>

@@ -1,0 +1,10 @@
+{
+  "name": "op-agent",
+  "version": "0.2.0",
+  "description": "Unofficial. Not affiliated with 1Password or Anthropic. Service Account secrets for Claude Code: dev runs freely, prod asks you (also over Remote Control).",
+  "author": { "name": "efrageek" },
+  "repository": "https://github.com/efrageek/op-agent",
+  "homepage": "https://github.com/efrageek/op-agent",
+  "license": "MIT",
+  "keywords": ["1password", "secrets", "service-account", "claude-code", "ssh"]
+}

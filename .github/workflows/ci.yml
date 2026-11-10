@@ -1,0 +1,33 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          for file in bin/op-agent tests/wrapper.sh tests/op-stub.sh scripts/op-host; do
+            bash -n "$file"
+          done
+          command -v shellcheck || { sudo apt-get update && sudo apt-get install -y shellcheck; }
+          shellcheck --severity=warning bin/op-agent tests/wrapper.sh tests/op-stub.sh scripts/op-host
+  wrapper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          command -v jq || { sudo apt-get update && sudo apt-get install -y jq; }
+          bash tests/wrapper.sh
